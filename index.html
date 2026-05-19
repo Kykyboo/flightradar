@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyTrack Live Radar</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+    <style>
+        /* CSS Variables & Theme */
+        :root {
+            --bg-color: #0a0e17;
+            --accent-green: #00e676;
+            --accent-blue: #00b0ff;
+            --glass-bg: rgba(16, 24, 39, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #ffffff;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+        }
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        /* Phase 1: Auth Screen */
+        #auth-container {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #1a2235 0%, var(--bg-color) 100%);
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        .login-card {
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-card h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: var(--accent-blue);
+            text-shadow: 0 0 10px rgba(0, 176, 255, 0.3);
+        }
+
+        .login-card p {
+            color: var(--text-muted);
+            margin-bottom: 30px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .google-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 12px 20px;
+            background: #ffffff;
+            color: #3c4043;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .google-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+        }
+
+        .google-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Phase 2/3: App Container */
+        #app-container {
+            display: none;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Header */
+        header {
+            height: 60px;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--glass-bg);
+            border-bottom: 1px solid var(--glass-border);
+            z-index: 500;
+        }
+
+        .brand {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--accent-blue);
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-info img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-green);
+        }
+
+        .sign-out-btn {
+            background: rgba(255, 59, 48, 0.1);
+            color: #ff453a;
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .sign-out-btn:hover {
+            background: rgba(255, 59, 48, 0.2);
+        }
+
+        /* Map Area */
+        main {
+            flex: 1;
+            position: relative;
+            display: flex;
+        }
+
+        #map {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+        }
+
+        /* Sidebar */
+        #sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            padding: 20px;
+            z-index: 400;
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #sidebar.active {
+            transform: translateX(0);
+        }
+
+        .sidebar-header {
+            display: flex;
+            justify-between: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 10px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .flight-data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .data-label { color: var(--text-muted); }
+        .data-val { font-weight: 600; color: var(--accent-green); text-align: right; }
+
+        /* Status Indicator */
+        .api-status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 400;
+            font-size: 12px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pulse {
+            width: 8px; height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse-animation 1.5s infinite;
+        }
+        @keyframes pulse-animation {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0, 230, 118, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-container">
+        <div class="login-card glass">
+            <h1>SkyTrack Live</h1>
+            <p>Real-time aviation telemetry overlay.<br>Vul hieronder je Firebase config in om de radar te activeren.</p>
+            <button id="google-login-btn" class="google-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    <path fill="none" d="M0 0h48v48H0z"/>
+                </svg>
+                Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <header>
+            <div class="brand">SkyTrack Radar</div>
+            <div class="user-profile">
+                <div class="user-info">
+                    <img id="user-avatar" src="" alt="Avatar">
+                    <span id="user-name">Loading...</span>
+                </div>
+                <button id="logout-btn" class="sign-out-btn">Sign Out</button>
+            </div>
+        </header>
+
+        <main>
+            <div id="map"></div>
+            
+            <aside id="sidebar" class="glass">
+                <div class="sidebar-header">
+                    <h2 id="sb-callsign" style="color: var(--accent-blue); margin:0;">FLIGHT</h2>
+                    <button class="close-btn" onclick="closeSidebar()">&times;</button>
+                </div>
+                <div class="flight-data-row">
+                    <span class="data-label">Origin Country</span>
+                    <span class="data-val" id="sb-country">--</span>
+                </div>
+                <div class="flight-data-row">
+                    <span class="data-label">Altitude</span>
+                    <span class="data-val" id="sb-alt">-- ft</span>
+                </div>
+                <div class="flight-data-row">
+                    <span class="data-label">Speed</span>
+                    <span class="data-val" id="sb-speed">-- kts</span>
+                </div>
+                <div class="flight-data-row">
+                    <span class="data-label">Heading</span>
+                    <span class="data-val" id="sb-heading">-- °</span>
+                </div>
+                <div class="flight-data-row">
+                    <span class="data-label">Coordinates</span>
+                    <span class="data-val" id="sb-coords">--</span>
+                </div>
+            </aside>
+
+            <div class="api-status glass">
+                <div class="pulse"></div>
+                <span id="update-time">Waiting for data...</span>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <script>
+        /** * PLAK HIERONDER JOUW STANDAARD FIREBASE CONFIG DATA:
+         */
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyAOODmDrxoLfaM_Yqra3vAz0x5lEPu0PRY",
+    authDomain: "flightradar-c0f77.firebaseapp.com",
+    projectId: "flightradar-c0f77",
+    storageBucket: "flightradar-c0f77.firebasestorage.app",
+    messagingSenderId: "535516467510",
+    appId: "1:535516467510:web:8ffdfd3d14f38030c7a397",
+    measurementId: "G-TB308LS9YZ"
+  };
+
+        // Initialiseer Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+        } catch(e) {
+            console.warn("Firebase config ontbreekt of is onjuist ingevuld.");
+        }
+        
+        const auth = firebase.auth();
+        const provider = new firebase.auth.GoogleAuthProvider();
+
+        const DOM = {
+            authContainer: document.getElementById('auth-container'),
+            appContainer: document.getElementById('app-container'),
+            loginBtn: document.getElementById('google-login-btn'),
+            logoutBtn: document.getElementById('logout-btn'),
+            userName: document.getElementById('user-name'),
+            userAvatar: document.getElementById('user-avatar'),
+            sidebar: document.getElementById('sidebar'),
+            updateTime: document.getElementById('update-time')
+        };
+
+        let map = null;
+        let flightMarkers = {};
+        let fetchInterval = null;
+
+        // Sessie Controle & Transitie
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                DOM.userName.textContent = user.displayName;
+                DOM.userAvatar.src = user.photoURL || '';
+                
+                DOM.authContainer.style.opacity = '0';
+                setTimeout(() => {
+                    DOM.authContainer.style.display = 'none';
+                    DOM.appContainer.style.display = 'flex';
+                    setTimeout(() => DOM.appContainer.style.opacity = '1', 50);
+                    initMapAndRadar();
+                }, 500);
+            } else {
+                cleanupRadar();
+                DOM.appContainer.style.opacity = '0';
+                setTimeout(() => {
+                    DOM.appContainer.style.display = 'none';
+                    DOM.authContainer.style.display = 'flex';
+                    setTimeout(() => DOM.authContainer.style.opacity = '1', 50);
+                }, 500);
+            }
+        });
+
+        DOM.loginBtn.addEventListener('click', () => {
+            auth.signInWithPopup(provider).catch(error => {
+                console.error("Auth Error: ", error.message);
+                alert("Inloggen mislukt. Controleer je Firebase config.");
+            });
+        });
+
+        DOM.logoutBtn.addEventListener('click', () => {
+            auth.signOut();
+        });
+
+        function initMapAndRadar() {
+            if (map !== null) return;
+
+            map = L.map('map', { zoomControl: false }).setView([50.85, 4.35], 6);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                maxZoom: 20
+            }).addTo(map);
+
+            setTimeout(() => { map.invalidateSize(); }, 100);
+
+            fetchFlightData();
+            fetchInterval = setInterval(fetchFlightData, 15000);
+        }
+
+        function cleanupRadar() {
+            if(fetchInterval) clearInterval(fetchInterval);
+            if(map) { map.remove(); map = null; }
+            flightMarkers = {};
+            closeSidebar();
+        }
+
+        async function fetchFlightData() {
+            // Gefilterd op Europa om de gratis API limieten niet te overschrijden
+            const url = 'https://opensky-network.org/api/states/all?lamin=42.0&lomin=-10.0&lamax=60.0&lomax=20.0';
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('API Limiet bereikt');
+                const data = await response.json();
+                
+                updateMarkers(data.states || []);
+                const now = new Date();
+                DOM.updateTime.textContent = `Live: ${data.states ? data.states.length : 0} vliegtuigen • ${now.toLocaleTimeString()}`;
+            } catch (error) {
+                console.error("OpenSky fout:", error);
+                DOM.updateTime.textContent = "Data vertraagd. Automatische herstart volgt...";
+            }
+        }
+
+        function updateMarkers(states) {
+            const currentIcaos = new Set();
+
+            states.forEach(state => {
+                const icao = state[0];
+                const callsign = (state[1] || 'UNKNOWN').trim();
+                const country = state[2] || 'Unknown';
+                const lon = state[5];
+                const lat = state[6];
+                const altMeters = state[7];
+                const speedMs = state[9];
+                const heading = state[10] || 0;
+
+                if (lat === null || lon === null) return;
+
+                currentIcaos.add(icao);
+
+                const altFt = altMeters ? Math.round(altMeters * 3.28084) : 'N/A';
+                const speedKts = speedMs ? Math.round(speedMs * 1.94384) : 'N/A';
+                const planeData = { callsign, country, lat, lon, altFt, speedKts, heading };
+
+                const iconHtml = `
+                    <div style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                            <path fill="var(--accent-green)" d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                        </svg>
+                    </div>`;
+
+                const planeIcon = L.divIcon({
+                    html: iconHtml,
+                    className: 'plane-marker',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+
+                if (flightMarkers[icao]) {
+                    flightMarkers[icao].setLatLng([lat, lon]);
+                    flightMarkers[icao].setIcon(planeIcon);
+                    flightMarkers[icao].planeData = planeData;
+                } else {
+                    const marker = L.marker([lat, lon], { icon: planeIcon }).addTo(map);
+                    marker.planeData = planeData;
+                    marker.on('click', () => openSidebar(marker.planeData));
+                    flightMarkers[icao] = marker;
+                }
+            });
+
+            Object.keys(flightMarkers).forEach(icao => {
+                if (!currentIcaos.has(icao)) {
+                    map.removeLayer(flightMarkers[icao]);
+                    delete flightMarkers[icao];
+                }
+            });
+        }
+
+        function openSidebar(data) {
+            document.getElementById('sb-callsign').textContent = data.callsign || 'N/A';
+            document.getElementById('sb-country').textContent = data.country || 'N/A';
+            document.getElementById('sb-alt').textContent = data.altFt !== 'N/A' ? `${data.altFt} ft` : 'N/A';
+            document.getElementById('sb-speed').textContent = data.speedKts !== 'N/A' ? `${data.speedKts} kts` : 'N/A';
+            document.getElementById('sb-heading').textContent = `${Math.round(data.heading)}°`;
+            document.getElementById('sb-coords').textContent = `${data.lat.toFixed(4)}, ${data.lon.toFixed(4)}`;
+            DOM.sidebar.classList.add('active');
+        }
+
+        function closeSidebar() {
+            DOM.sidebar.classList.remove('active');
+        }
+    </script>
+</body>
+</html>
